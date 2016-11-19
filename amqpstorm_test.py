@@ -73,12 +73,12 @@ class AmqpContainer(object):
 		print("Connection Established!")
 		print("Connection: ", self.connection)
 
-		self.channel = self.connection.channel()
-		self.channel.basic.qos(10)
+		self.storm_channel = self.connection.channel()
+		self.storm_channel.basic.qos(10)
 		self.log.info("Connection established. Setting up consumer.")
 
 
-		self.channel.exchange.declare(
+		self.storm_channel.exchange.declare(
 					exchange="test_resp_enchange.e",
 					exchange_type="direct",
 					durable=False,
@@ -88,37 +88,39 @@ class AmqpContainer(object):
 
 		self.log.info("Configuring queues.")
 
-		self.channel.queue.declare('test_resp_queue.q',
+		self.storm_channel.queue.declare('test_resp_queue.q',
 					durable=False,
 					auto_delete=True)
 		self.log.info("Declared.")
 
-		self.channel.queue.bind(queue='test_resp_queue.q', exchange="test_resp_enchange.e", routing_key='test_resp_queue')
+		self.storm_channel.queue.bind(queue='test_resp_queue.q', exchange="test_resp_enchange.e", routing_key='test_resp_queue')
 
 
 		self.keepalive_exchange_name = "keepalive_exchange"+str(id("wat"))
 
-		self.channel.exchange.declare(
+		self.storm_channel.exchange.declare(
 					exchange=self.keepalive_exchange_name,
 					durable=False,
 					auto_delete=True)
 
-		self.channel.queue.declare(
+		self.storm_channel.queue.declare(
 					queue=self.keepalive_exchange_name+'.nak.q',
 					durable=False,
 					auto_delete=True)
 
-		self.channel.queue.bind(
+		self.storm_channel.queue.bind(
 					queue=self.keepalive_exchange_name+'.nak.q',
 					exchange=self.keepalive_exchange_name,
 					routing_key="nak")
 
 
 		self.log.info("Bound.")
-		self.channel.basic.consume(self.process_rx, 'test_resp_queue.q', no_ack=False)
-		self.channel.basic.consume(self.process_rx, self.keepalive_exchange_name+'.nak.q', no_ack=False)
+		self.storm_channel.basic.consume(self.process_rx, 'test_resp_queue.q', no_ack=False)
+		self.storm_channel.basic.consume(self.process_rx, self.keepalive_exchange_name+'.nak.q', no_ack=False)
 		self.log.info("Consume triggered.")
 
+
+		self.storm_channel.basic.qos(20, global_=True)
 
 		self.log.info("Starting thread")
 		self.tx_thread = threading.Thread(target=self.fill_queue)
@@ -128,7 +130,7 @@ class AmqpContainer(object):
 		try:
 			self.log.info("Consuming.")
 			while 1:
-				self.channel.process_data_events(to_tuple=False)
+				self.storm_channel.process_data_events(to_tuple=False)
 			self.close()
 		except KeyboardInterrupt:
 			self.close()
@@ -145,6 +147,14 @@ class AmqpContainer(object):
 		print("message body:", message.body)
 		message.ack()
 
+
+	def poke_keepalive(self):
+		self.storm_channel.basic.publish(body='wat'*5000, exchange=self.keepalive_exchange_name, routing_key='nak',
+			properties={
+				'correlation_id' : "keepalive"
+			})
+
+
 	def fill_queue(self):
 		while not DIE:
 			print("Putting message")
@@ -152,15 +162,12 @@ class AmqpContainer(object):
 			# channel.basic.publish(body='Hello World!',
 			# 					  routing_key='simple_queue')
 			try:
-				self.channel.basic.publish(exchange="test_resp_enchange.e", body='test?', routing_key="test_resp_queue")
-				self.channel.basic.publish(body='wat', exchange=self.keepalive_exchange_name, routing_key='nak',
-					properties={
-						'correlation_id' : "keepalive"
-					})
+				self.storm_channel.basic.publish(exchange="test_resp_enchange.e", body='test?', routing_key="test_resp_queue")
+				self.poke_keepalive()
 			except amqpstorm.AMQPError as why:
 				self.log.error("Exception in publish!")
 				self.log.error(why)
-				self.channel.stop_consuming()
+				self.storm_channel.stop_consuming()
 				return
 			time.sleep(0.1)
 

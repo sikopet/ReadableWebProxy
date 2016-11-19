@@ -171,21 +171,6 @@ class AmqpContainer(object):
 		self.storm_channel.process_data_events(to_tuple=False)
 
 
-	def handle_keepalive_rx(self, message):
-
-		with self.heartbeat_timeout_lock:
-			self.last_hearbeat_received = time.time()
-		message.ack()
-		self.log.info("Heartbeat packet received! %s", message.body)
-
-	def handle_normal_rx(self, message):
-
-		with self.rx_timeout_lock:
-			self.last_message_received = time.time()
-		self.rx_queue.put(message.body)
-		message.ack()
-
-		self.log.info("Message packet received! %s", len(message.body))
 	def handle_rx(self, message):
 		self.log.info("Received message!")
 		self.log.info("Message channel: %s", message.channel)
@@ -201,6 +186,23 @@ class AmqpContainer(object):
 			self.prefetch_extended = True
 			self.storm_channel.basic.qos(self.prefetch_count, global_=True)
 			self.log.info("Prefetch updated")
+
+	def handle_keepalive_rx(self, message):
+
+		with self.heartbeat_timeout_lock:
+			self.last_hearbeat_received = time.time()
+		message.ack()
+		self.log.info("Heartbeat packet received! %s", message.body)
+
+	def handle_normal_rx(self, message):
+
+		with self.rx_timeout_lock:
+			self.last_message_received = time.time()
+		self.rx_queue.put(message.body)
+		message.ack()
+
+		self.log.info("Message packet received! %s", len(message.body))
+
 
 	def poke_keepalive(self):
 		self.storm_channel.basic.publish(body='wat', exchange=self.keepalive_exchange_name, routing_key='nak',
@@ -357,7 +359,7 @@ class ConnectorManager:
 
 			self.interface = AmqpContainer(conn_params, self.task_queue, **rabbit_params)
 
-			self.rx_thread = threading.Thread(target=self._rx_poll,         daemon=False)
+			self.rx_thread = threading.Thread(target=self._rx_poll,         daemon=False, args=[rabbit_params])
 			self.tx_thread = threading.Thread(target=self._tx_poll,         daemon=False)
 			self.hb_thread = threading.Thread(target=self._timeout_watcher, daemon=False)
 			self.rx_thread.start()
@@ -369,7 +371,6 @@ class ConnectorManager:
 			print("tx_thread", self.tx_thread.is_alive())
 			print("hb_thread", self.hb_thread.is_alive())
 
-			self.interface.start_consume(rabbit_params)
 
 
 	def disconnect(self):
@@ -535,8 +536,10 @@ class ConnectorManager:
 				self.had_exception.value = 1
 
 
-	def _rx_poll(self):
+	def _rx_poll(self, rabbit_params):
 		time.sleep(1)
+
+		self.interface.start_consume(rabbit_params)
 
 		self.log.info("RX Poll process starting. Threads_live: %s, had exception %s", self.threads_live.value, self.had_exception.value)
 		try:
