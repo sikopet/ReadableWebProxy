@@ -1,6 +1,7 @@
 """AMQPStorm Connection.IO."""
 
 import logging
+import threading
 import traceback
 import multiprocessing
 import select
@@ -144,6 +145,7 @@ class IO(object):
         """
         self._lock.acquire()
         try:
+            print("Writing: ", frame_data, threading.get_ident())
             total_bytes_written = 0
             bytes_to_send = len(frame_data)
             while total_bytes_written < bytes_to_send:
@@ -156,12 +158,15 @@ class IO(object):
                         raise socket.error('connection/socket error')
                     total_bytes_written += bytes_written
                 except socket.timeout:
+                    print("Write timed out!")
                     pass
                 except socket.error as why:
+                    print("Socket error: ", why)
                     if why.args[0] in (EWOULDBLOCK, EAGAIN):
                         continue
                     self._exceptions.append(AMQPConnectionError(why))
                     return
+            print("Write finished.")
         finally:
             self._lock.release()
 
@@ -281,6 +286,7 @@ class IO(object):
         data_in = EMPTY_BUFFER
         try:
             data_in = self._read_from_socket()
+            print("Received data: ", data_in, threading.get_ident())
         except socket.timeout:
             pass
         except (IOError, OSError) as why:

@@ -4,13 +4,13 @@ import multiprocessing
 import settings
 import datetime
 import queue
-import LocalAmqpConnector
 import logging
 import threading
 import os.path
 import time
 import ssl
 import uuid
+import FetchAgent.AmqpConnector
 
 
 class RabbitQueueHandler(object):
@@ -31,13 +31,14 @@ class RabbitQueueHandler(object):
 		assert "RABBIT_PASWD"       in settings
 		assert "RABBIT_SRVER"       in settings
 		assert "RABBIT_VHOST"       in settings
+		assert "RABBIT_FEED_VHOST"  in settings
 
 		assert "taskq_task"         in settings
 		assert "taskq_response"     in settings
 
 		sslopts = self.getSslOpts()
 		self.vhost = settings["RABBIT_VHOST"]
-		self.connector = LocalAmqpConnector.Connector(userid            = settings["RABBIT_LOGIN"],
+		self.connector = FetchAgent.AmqpConnector.Connector(userid            = settings["RABBIT_LOGIN"],
 												password           = settings["RABBIT_PASWD"],
 												host               = settings["RABBIT_SRVER"],
 												virtual_host       = settings["RABBIT_VHOST"],
@@ -48,11 +49,29 @@ class RabbitQueueHandler(object):
 												prefetch           = settings.get('prefetch', 25),
 												durable            = True,
 												heartbeat          = 60,
-												task_exchange_type = settings.get('queue_mode', 'fanout'),
+												task_exchange_type = 'direct',
 												poll_rate          = settings.get('poll_rate', 1.0/100),
 												task_queue         = settings["taskq_task"],
 												response_queue     = settings["taskq_response"],
 												)
+
+		# self.feed_connector = FetchAgent.AmqpConnector.Connector(userid            = settings["RABBIT_FEED_LOGIN"],
+		# 										password           = settings["RABBIT_FEED_PASWD"],
+		# 										host               = settings["RABBIT_FEED_SRVER"],
+		# 										virtual_host       = settings["RABBIT_FEED_VHOST"],
+		# 										ssl                = sslopts,
+		# 										master             = settings.get('master', True),
+		# 										synchronous        = settings.get('synchronous', False),
+		# 										flush_queues       = False,
+		# 										prefetch           = settings.get('prefetch', 25),
+		# 										durable            = True,
+		# 										heartbeat          = 60,
+		# 										task_exchange_type = 'fanout',
+		# 										poll_rate          = settings.get('poll_rate', 1.0/100),
+		# 										task_queue         = settings["taskq_task"],
+		# 										response_queue     = settings["taskq_response"],
+		# 										)
+
 
 		self.chunks = {}
 
@@ -213,6 +232,10 @@ class RabbitQueueHandler(object):
 					self.put_job(job)
 				except queue.Empty:
 					break
+		while not self.mdict['rssq'].empty():
+			job = self.mdict['rssq'].get_nowait()
+			self.feed_connector.putMessage(job, synchronous=1000)
+
 
 	def process_retreived(self):
 		while True:
@@ -267,10 +290,15 @@ STATE = {}
 
 def startup_interface(manager):
 	amqp_settings = {
-		'RABBIT_LOGIN'    : settings.RPC_RABBIT_LOGIN,
-		'RABBIT_PASWD'    : settings.RPC_RABBIT_PASWD,
-		'RABBIT_SRVER'    : settings.RPC_RABBIT_SRVER,
-		'RABBIT_VHOST'    : settings.RPC_RABBIT_VHOST,
+		'RABBIT_LOGIN'         : settings.RPC_RABBIT_LOGIN,
+		'RABBIT_PASWD'         : settings.RPC_RABBIT_PASWD,
+		'RABBIT_SRVER'         : settings.RPC_RABBIT_SRVER,
+		'RABBIT_VHOST'         : settings.RPC_RABBIT_VHOST,
+
+		'RABBIT_FEED_LOGIN'    : settings.RABBIT_LOGIN,
+		'RABBIT_FEED_PASWD'    : settings.RABBIT_PASWD,
+		'RABBIT_FEED_SRVER'    : settings.RABBIT_SRVER,
+		'RABBIT_FEED_VHOST'    : settings.RABBIT_VHOST,
 		'master'          : True,
 		'prefetch'        : 250,
 		# 'prefetch'        : 50,

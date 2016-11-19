@@ -213,6 +213,7 @@ class Basic(Handler):
             raise AMQPInvalidArgument('multiple should be a boolean')
         ack_frame = pamqp_spec.Basic.Ack(delivery_tag=delivery_tag,
                                          multiple=multiple)
+        print("Writing ack frame: ", ack_frame, ack_frame.delivery_tag)
         self._channel.write_frame(ack_frame)
 
     def nack(self, delivery_tag=None, multiple=False, requeue=True):

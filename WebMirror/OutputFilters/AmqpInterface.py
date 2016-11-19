@@ -2,7 +2,7 @@
 import msgpack
 import multiprocessing
 import datetime
-import LocalAmqpConnector
+# import LocalAmqpConnector
 import logging
 import os.path
 import ssl

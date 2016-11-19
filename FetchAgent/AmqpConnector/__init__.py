@@ -107,6 +107,7 @@ class AmqpContainer(object):
 					queue=config['response_queue_name'],
 					durable=config['durable'],
 					auto_delete=False)
+
 		self.log.info("Declared.")
 
 		self.storm_channel.queue.bind(
@@ -186,9 +187,11 @@ class AmqpContainer(object):
 
 		self.log.info("Message packet received! %s", len(message.body))
 	def handle_rx(self, message):
-		# self.log.info("Received message!")
-		# self.log.info("Message channel: %s", message.channel)
-		# self.log.info("Message properties: %s", message.properties)
+		self.log.info("Received message!")
+		self.log.info("Message channel: %s", message.channel)
+		self.log.info("Message properties: %s", message.properties)
+		self.log.info("Message _channel: %s", message._channel)
+		self.log.info("Message _method: %s", message._method)
 		if message.properties['correlation_id'] == 'keepalive':
 			self.handle_keepalive_rx(message)
 		else:
@@ -260,6 +263,10 @@ class AmqpContainer(object):
 			# 	# We periodically cycle the consuming state of the input queue, to stop it from being wedged.
 			# 	self.storm_channel.close()
 			self.log.info("Interface timeout thread. Ages: heartbeat -> %0.2f, last message -> %0.2f.", last_hb, last_rx)
+
+			# If we've been idle for 30 seconds, try to recover any items in the queue
+			if last_rx > 30:
+				self.storm_channel.basic.recover(requeue=True)
 
 class ConnectorManager:
 	def __init__(self, config, runstate, task_queue, response_queue):
@@ -597,17 +604,7 @@ class ConnectorManager:
 
 		log.info("Worker thread starting up.")
 		try:
-			print()
-			print()
-			print("Connecting %s" % config['virtual_host'])
-			print()
-			print()
 			connection_manager = cls(config, runstate, tx_q, rx_q)
-			print()
-			print()
-			print("Entering monitor-loop %s" % config['virtual_host'])
-			print()
-			print()
 			connection_manager.monitor_loop()
 
 		except Exception:

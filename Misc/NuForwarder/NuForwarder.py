@@ -18,7 +18,7 @@ from WebMirror.OutputFilters.util.TitleParsers import extractVolChapterFragmentP
 
 import WebMirror.OutputFilters.FilterBase
 import WebMirror.OutputFilters.util.MessageConstructors  as msgpackers
-import WebMirror.OutputFilters.AmqpInterface
+# import WebMirror.OutputFilters.AmqpInterface
 from WebMirror.OutputFilters.util.TitleParsers import extractTitle
 import common.database as db
 

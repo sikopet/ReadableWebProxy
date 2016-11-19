@@ -60,6 +60,9 @@ class FetchInterfaceServer(object):
 		self.log.info("Putting item in queue %s with size: %s!", queuename, len(job))
 		self.mdict['outq'][queuename].put(job)
 
+	def putRelease(self, release):
+		self.mdict['rssq'].put(release)
+
 	def getJob(self, queuename):
 		self._check_have_queue(queuename)
 		self.log.info("Get job call for '%s' -> %s", queuename, self.mdict['inq'][queuename].qsize())
@@ -109,6 +112,7 @@ def initialize_manager():
 	print("Manager lock: ", FetchAgent.manager.manager['qlock'])
 	FetchAgent.manager.manager['outq'] = {}
 	FetchAgent.manager.manager['inq'] = {}
+	FetchAgent.manager.manager['rssq'] = multiprocessing.Queue()
 
 	return FetchAgent.manager.manager
 

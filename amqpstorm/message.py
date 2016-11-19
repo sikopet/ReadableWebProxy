@@ -1,6 +1,7 @@
 """AMQPStorm Message."""
 
 import json
+import time
 import uuid
 from datetime import datetime
 
@@ -106,6 +107,7 @@ class Message(BaseMessage):
 
         :return:
         """
+        print("ACK For delivery tag:", self._method['delivery_tag'], "time:", time.time())
         if not self._method:
             raise AMQPMessageError(
                 'Message.ack only available on incoming messages'
@@ -122,6 +124,10 @@ class Message(BaseMessage):
 
         :param bool requeue:
         """
+
+
+        print("NACK For delivery tag:", self._method['delivery_tag'])
+
         if not self._method:
             raise AMQPMessageError(
                 'Message.nack only available on incoming messages'

@@ -1,6 +1,6 @@
 
 
-import WebMirror.OutputFilters.AmqpInterface
+# import WebMirror.OutputFilters.AmqpInterface
 import config
 import traceback
 import sqlalchemy.exc

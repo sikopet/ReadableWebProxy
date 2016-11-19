@@ -157,7 +157,6 @@ class NuHomepageFilter(WebMirror.OutputFilters.FilterBase.FilterBase):
 
 		release_tables = container.find_all('table', class_='tablesorter')
 
-		# print("Release tables:", release_tables)
 
 		releases = []
 		for table_div in release_tables:
@@ -165,15 +164,17 @@ class NuHomepageFilter(WebMirror.OutputFilters.FilterBase.FilterBase):
 				tds = item.find_all('td')
 				if len(tds) == 3:
 					series, release, group = tds
+					referrer = series.a['href']
 					linkas = release.find_all('a', class_='chp-release')
 					sname = series.get_text().strip()
 					gname = group.get_text().strip()
+					self.log.info("Using %s for referrer for %s -> %s", referrer, sname, gname)
 					for link in linkas:
 						release = {
 							'seriesname'       : sname,
 							'releaseinfo'      : link.get_text().strip(),
 							'groupinfo'        : gname,
-							'referrer'         : currentUrl,
+							'referrer'         : referrer,
 							'outbound_wrapper' : link['href'],
 							'actual_target'    : None,
 						}

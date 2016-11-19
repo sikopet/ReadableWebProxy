@@ -3,11 +3,38 @@ import urllib.parse
 import logging
 import threading
 import time
-import json
+import ssl
+import os.path
 
 import amqpstorm
 
 DIE = False
+
+import settings
+
+
+def getSslOpts():
+	'''
+	Verify the SSL cert exists in the proper place.
+	'''
+	certpath = './rabbit_pub_cert/'
+
+	caCert = os.path.abspath(os.path.join(certpath, './cacert.pem'))
+	cert = os.path.abspath(os.path.join(certpath, './cert1.pem'))
+	keyf = os.path.abspath(os.path.join(certpath, './key1.pem'))
+
+	assert os.path.exists(caCert), "No certificates found on path '%s'" % caCert
+	assert os.path.exists(cert), "No certificates found on path '%s'" % cert
+	assert os.path.exists(keyf), "No certificates found on path '%s'" % keyf
+
+	ret = {"cert_reqs" : ssl.CERT_REQUIRED,
+			"ca_certs" : caCert,
+			"keyfile"  : keyf,
+			"certfile"  : cert,
+		}
+	print("Certificate config: ", ret)
+
+	return ret
 
 class AmqpContainer(object):
 	def __init__(self):
@@ -16,9 +43,7 @@ class AmqpContainer(object):
 
 		self.log.info("Initializing AMQP connection.")
 
-		self.config = json.load(open("test_conf.json"))
-
-
+		sslopts = getSslOpts()
 
 		# 'hostname': hostname,
 		# 'username': username,
@@ -30,18 +55,18 @@ class AmqpContainer(object):
 		# 'ssl': kwargs.get('ssl', False),
 		# 'ssl_options': kwargs.get('ssl_options', {})
 		self.connection = amqpstorm.Connection(
-				hostname     = self.config['host'].split(":")[0],
-				username     = self.config['userid'],
-				password     = self.config['password'],
-				port         = int(self.config['host'].split(":")[1]),
-				virtual_host = self.config['vhost'],
+				hostname     = settings.RPC_RABBIT_SRVER.split(":")[0],
+				username     = settings.RPC_RABBIT_LOGIN,
+				password     = settings.RPC_RABBIT_PASWD,
+				port         = int(settings.RPC_RABBIT_SRVER.split(":")[1]),
+				virtual_host = settings.RPC_RABBIT_VHOST,
 				heartbeat    = 15,
 				timeout      = 30,
 				ssl          = True,
 				ssl_options  = {
-					'ca_certs'           : self.config['sslopts']['ca_certs'],
-					'certfile'             : self.config['sslopts']['certfile'],
-					'keyfile'              : self.config['sslopts']['keyfile'],
+					'ca_certs'           : sslopts['ca_certs'],
+					'certfile'             : sslopts['certfile'],
+					'keyfile'              : sslopts['keyfile'],
 				}
 			)
 
@@ -69,9 +94,31 @@ class AmqpContainer(object):
 		self.log.info("Declared.")
 
 		self.channel.queue.bind(queue='test_resp_queue.q', exchange="test_resp_enchange.e", routing_key='test_resp_queue')
+
+
+		self.keepalive_exchange_name = "keepalive_exchange"+str(id("wat"))
+
+		self.channel.exchange.declare(
+					exchange=self.keepalive_exchange_name,
+					durable=False,
+					auto_delete=True)
+
+		self.channel.queue.declare(
+					queue=self.keepalive_exchange_name+'.nak.q',
+					durable=False,
+					auto_delete=True)
+
+		self.channel.queue.bind(
+					queue=self.keepalive_exchange_name+'.nak.q',
+					exchange=self.keepalive_exchange_name,
+					routing_key="nak")
+
+
 		self.log.info("Bound.")
 		self.channel.basic.consume(self.process_rx, 'test_resp_queue.q', no_ack=False)
+		self.channel.basic.consume(self.process_rx, self.keepalive_exchange_name+'.nak.q', no_ack=False)
 		self.log.info("Consume triggered.")
+
 
 		self.log.info("Starting thread")
 		self.tx_thread = threading.Thread(target=self.fill_queue)
@@ -80,7 +127,8 @@ class AmqpContainer(object):
 
 		try:
 			self.log.info("Consuming.")
-			self.channel.start_consuming(to_tuple=False)
+			while 1:
+				self.channel.process_data_events(to_tuple=False)
 			self.close()
 		except KeyboardInterrupt:
 			self.close()
@@ -105,6 +153,10 @@ class AmqpContainer(object):
 			# 					  routing_key='simple_queue')
 			try:
 				self.channel.basic.publish(exchange="test_resp_enchange.e", body='test?', routing_key="test_resp_queue")
+				self.channel.basic.publish(body='wat', exchange=self.keepalive_exchange_name, routing_key='nak',
+					properties={
+						'correlation_id' : "keepalive"
+					})
 			except amqpstorm.AMQPError as why:
 				self.log.error("Exception in publish!")
 				self.log.error(why)
